@@ -1,0 +1,25 @@
+.env
+.env.*
+!.env.example
+node_modules/
+vendor/
+*.log
+.vscode/
+.idea/
+.claude/
+.agents/
+.phpunit.cache/
+.phpunit.result.cache
+.DS_Store
+Thumbs.db
+
+# Runtime / generated data (contains personal data)
+backend/storage/logs/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/storage/framework/cache/*
+backend/storage/app/private/*
+backend/storage/app/public/*
+backend/storage/app/test-cards/
+!backend/storage/**/.gitkeep
+!backend/storage/**/.gitignore
