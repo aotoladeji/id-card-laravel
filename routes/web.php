@@ -27,6 +27,8 @@ Route::get('/setup/migrate/{token}', function (string $token) {
     try {
         $cfg = config('database.connections.mysql');
         $info = 'DB host='.$cfg['host'].' port='.$cfg['port'].' database='.$cfg['database'].' user='.$cfg['username']."\n";
+        $names = array_filter(array_merge(array_keys($_ENV), array_keys($_SERVER)), fn ($k) => preg_match('/^(DB_|MYSQL|DATABASE)/i', (string) $k));
+        $info .= 'DB-related env names: '.implode(', ', array_unique($names))."\n";
         \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
         $output = \Illuminate\Support\Facades\Artisan::output();
         \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
