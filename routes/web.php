@@ -15,6 +15,23 @@ use Illuminate\Support\Facades\Route;
 | of "web" and /api/* is more specific.
 */
 
+// One-time browser setup for hosts without a shell. Disabled unless the
+// SETUP_TOKEN env var is set; remove that var once the database is migrated.
+Route::get('/setup/migrate/{token}', function (string $token) {
+    $expected = (string) env('SETUP_TOKEN', '');
+
+    if ($expected === '' || ! hash_equals($expected, $token)) {
+        abort(404);
+    }
+
+    \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+    $output = \Illuminate\Support\Facades\Artisan::output();
+    \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
+
+    return response($output."\nSeeded. Now remove SETUP_TOKEN.", 200)
+        ->header('Content-Type', 'text/plain');
+});
+
 Route::get('/{any}', function () {
     $indexFile = public_path('index.html');
 
