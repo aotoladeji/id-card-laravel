@@ -2,6 +2,14 @@
 
 use Illuminate\Support\Str;
 
+// Accept DB_HOST given as "host:port" (as shown on Wasmer's database card).
+$dbHost = (string) env('DB_HOST', '127.0.0.1');
+$dbPort = env('DB_PORT', '3306');
+if (preg_match('/^(.+):(\d+)$/', $dbHost, $m)) {
+    $dbHost = $m[1];
+    $dbPort = $m[2];
+}
+
 return [
 
     'default' => env('DB_CONNECTION', 'mysql'),
@@ -12,8 +20,8 @@ return [
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '3306'),
+            'host' => $dbHost,
+            'port' => $dbPort,
             'database' => env('DB_DATABASE', env('DB_NAME', 'id_card_unit')),
             'username' => env('DB_USERNAME', env('DB_USER', 'root')),
             'password' => env('DB_PASSWORD', ''),
