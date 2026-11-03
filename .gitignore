@@ -31,3 +31,6 @@ storage/app/test-cards/
 Homestead.json
 Homestead.yaml
 auth.json
+
+/bootstrap/cache/*
+!/bootstrap/cache/.gitkeep
