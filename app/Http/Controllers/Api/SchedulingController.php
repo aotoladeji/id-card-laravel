@@ -721,7 +721,11 @@ class SchedulingController extends Controller
             return response()->json(['success' => true, 'message' => 'No students found for this schedule.', 'sent' => 0]);
         }
 
-        $frontendUrl = rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/');
+        $frontendUrl = rtrim((string) env('FRONTEND_URL', ''), '/');
+        // Unset or a leftover localhost value: use the address this request came in on.
+        if ($frontendUrl === '' || preg_match('#^https?://(localhost|127\.0\.0\.1)#i', $frontendUrl)) {
+            $frontendUrl = request()->getSchemeAndHttpHost();
+        }
         $schedulingUrl = "{$frontendUrl}/schedule/{$id}";
 
         $startDateStr = $config->start_date ? Carbon::parse($config->start_date)->format('j F Y') : 'TBD';
