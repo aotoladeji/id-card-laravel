@@ -30,6 +30,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'printing.reports' => \App\Http\Middleware\CanViewPrintingReports::class,
         ]);
 
+        // The SPA authenticates with JWT, so web requests don't need sessions
+        // (avoids failures on hosts without a writable storage/ or sessions table).
+        $middleware->web(remove: [
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+        ]);
+
         $middleware->validateCsrfTokens(except: ['api/*']);
     })
     ->withExceptions(function (Exceptions $exceptions) {
