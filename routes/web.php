@@ -24,11 +24,18 @@ Route::get('/setup/migrate/{token}', function (string $token) {
         abort(404);
     }
 
-    \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-    $output = \Illuminate\Support\Facades\Artisan::output();
-    \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
+    try {
+        $cfg = config('database.connections.mysql');
+        $info = 'DB host='.$cfg['host'].' port='.$cfg['port'].' database='.$cfg['database'].' user='.$cfg['username']."\n";
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
+    } catch (\Throwable $e) {
+        return response(($info ?? '').'ERROR: '.$e->getMessage(), 200)
+            ->header('Content-Type', 'text/plain');
+    }
 
-    return response($output."\nSeeded. Now remove SETUP_TOKEN.", 200)
+    return response($info.$output."\nSeeded. Now remove SETUP_TOKEN.", 200)
         ->header('Content-Type', 'text/plain');
 });
 
