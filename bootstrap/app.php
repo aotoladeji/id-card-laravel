@@ -32,11 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // The SPA authenticates with JWT, so web requests don't need sessions
         // (avoids failures on hosts without a writable storage/ or sessions table).
-        $middleware->web(remove: [
-            \Illuminate\Session\Middleware\StartSession::class,
-            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
-        ]);
+        // Web routes only serve the SPA shell, so skip cookies/encryption too
+        // (EncryptCookies throws when APP_KEY is not configured).
+        $middleware->group('web', []);
 
         $middleware->validateCsrfTokens(except: ['api/*']);
     })
