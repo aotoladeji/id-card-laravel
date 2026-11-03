@@ -59,6 +59,15 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        $exceptions->render(function (\Illuminate\Database\QueryException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'message' => 'Database unavailable or not migrated. Run the setup migration and check the DB_* settings.',
+                    'error' => config('app.debug') ? $e->getMessage() : null,
+                ], 503);
+            }
+        });
+
         $exceptions->render(function (\Throwable $e, Request $request) {
             if ($request->is('api/*')) {
                 $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
