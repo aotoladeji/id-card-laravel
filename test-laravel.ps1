@@ -1,7 +1,7 @@
 # Test script to diagnose Laravel serve issue
 Write-Host "Testing Laravel serve..." -ForegroundColor Green
 
-cd "c:\xampp\htdocs\id-card-unit\backend"
+cd "c:\xampp\htdocs\id-card-unit"
 
 Write-Host "`nAttempting to start Laravel on port 8000..." -ForegroundColor Yellow
 $process = Start-Process -FilePath "php" -ArgumentList "artisan", "serve", "--host=127.0.0.1", "--port=8000" -PassThru -WindowStyle Normal
@@ -33,3 +33,4 @@ if (-not $process.HasExited) {
     Stop-Process -Id $process.Id -Force
     Write-Host "Server stopped." -ForegroundColor Green
 }
+

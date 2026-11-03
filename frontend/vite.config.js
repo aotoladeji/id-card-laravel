@@ -28,8 +28,9 @@ export default defineConfig({
     // Build straight into the Laravel public/ folder so one Apache
     // document root serves both the SPA and the API. Run `npm run build`
     // from this folder (or use ../build-frontend.sh from the project root).
-    outDir: '../backend/public',
+    outDir: '../public',
     emptyOutDir: false, // never wipe index.php / .htaccess / storage symlink
     assetsDir: 'assets',
   },
 })
+
