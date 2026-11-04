@@ -75,16 +75,24 @@ class CardGenerationService
     {
         $cacheKey = $this->getCacheKey($card);
         
-        if (!$forceRegenerate && Storage::exists($cacheKey)) {
-            Log::debug('Card image served from cache', ['cache_key' => $cacheKey]);
-            return Storage::get($cacheKey);
+        try {
+            if (!$forceRegenerate && Storage::exists($cacheKey)) {
+                Log::debug('Card image served from cache', ['cache_key' => $cacheKey]);
+                return Storage::get($cacheKey);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Card image cache unreadable', ['error' => $e->getMessage()]);
         }
 
         $png = $this->generateCardImage($card);
-        
-        // Store in cache
-        Storage::put($cacheKey, $png);
-        
+
+        // The cache is an optimisation only; hosts with read-only storage must still render.
+        try {
+            Storage::put($cacheKey, $png);
+        } catch (\Throwable $e) {
+            Log::warning('Card image cache not writable', ['error' => $e->getMessage()]);
+        }
+
         return $png;
     }
 
@@ -93,9 +101,12 @@ class CardGenerationService
      */
     public function clearCache(string $cardId): void
     {
-        $pattern = "card-images/{$cardId}*.png";
-        $files = Storage::files('card-images');
-        
+        try {
+            $files = Storage::files('card-images');
+        } catch (\Throwable $e) {
+            return;
+        }
+
         foreach ($files as $file) {
             if (str_starts_with(basename($file), $cardId)) {
                 Storage::delete($file);
