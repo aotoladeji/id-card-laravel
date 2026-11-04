@@ -703,11 +703,13 @@ class SchedulingController extends Controller
             return response()->json(['message' => 'Configuration not found'], 404);
         }
 
-        DB::table('scheduled_students')->where('config_id', $id)->update(['email_sent' => false]);
+        // Students who already have a successful appointment don't need the
+        // booking invite again, so they're excluded from every step below.
+        DB::table('scheduled_students')->where('config_id', $id)->where('has_scheduled', false)->update(['email_sent' => false]);
 
         // Backfill any student left with a NULL login_code (e.g. from a cancelled
         // booking before that flow re-issued one) so every invite actually has a code.
-        $studentsMissingCode = DB::table('scheduled_students')->where('config_id', $id)->whereNull('login_code')->get(['id']);
+        $studentsMissingCode = DB::table('scheduled_students')->where('config_id', $id)->where('has_scheduled', false)->whereNull('login_code')->get(['id']);
         foreach ($studentsMissingCode as $row) {
             DB::table('scheduled_students')->where('id', $row->id)->update([
                 'login_code' => $this->generateUniqueLoginCode(),
@@ -715,10 +717,10 @@ class SchedulingController extends Controller
             ]);
         }
 
-        $students = DB::table('scheduled_students')->where('config_id', $id)->get();
+        $students = DB::table('scheduled_students')->where('config_id', $id)->where('has_scheduled', false)->get();
 
         if ($students->isEmpty()) {
-            return response()->json(['success' => true, 'message' => 'No students found for this schedule.', 'sent' => 0]);
+            return response()->json(['success' => true, 'message' => 'No students left to email for this schedule (all have already scheduled an appointment).', 'sent' => 0]);
         }
 
         $frontendUrl = rtrim((string) env('FRONTEND_URL', ''), '/');

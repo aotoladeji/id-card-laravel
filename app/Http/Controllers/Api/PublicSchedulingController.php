@@ -244,12 +244,12 @@ class PublicSchedulingController extends Controller
             return response()->json(['success' => false, 'message' => 'Matric number is required'], 400);
         }
 
+        // Look up the booked student straight from the database by matric number,
+        // regardless of which schedule (active, closed, or archived) the record
+        // belongs to. A new schedule must never block capture-app access for
+        // students who already booked under an older schedule.
         $student = DB::table('scheduled_students')
             ->where('has_scheduled', true)
-            // Students of archived schedules must not be able to use the capture app.
-            ->whereIn('config_id', function ($sub) {
-                $sub->select('id')->from('scheduling_config')->whereNull('archived_at');
-            })
             ->whereRaw('LOWER(TRIM(COALESCE(matric_number, \'\'))) = LOWER(?)', [$matricNumber])
             ->orderByDesc('updated_at')
             ->first();
