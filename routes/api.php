@@ -73,6 +73,7 @@ Route::middleware('auth.jwt')->group(function () {
         ->middleware('role:supervisor');
     Route::delete('/cards/{id}', [CardController::class, 'destroy']);
     Route::post('/cards/sync', [CardSyncController::class, 'sync']);
+    Route::post('/cards/resolve-duplicates', [CardSyncController::class, 'resolveDuplicates']);
 
     // Approved cards history (backend/routes/approvedCards.js)
     Route::get('/approved-cards', [ApprovedCardController::class, 'index']);
@@ -171,6 +172,7 @@ Route::middleware('auth.jwt')->group(function () {
         Route::put('/{id}', [SchedulingController::class, 'update']);
         Route::put('/{id}/toggle', [SchedulingController::class, 'toggle']);
         Route::post('/{id}/reopen', [SchedulingController::class, 'reopenWithNewBatch']);
+        Route::post('/{id}/reopen/resolve-duplicates', [SchedulingController::class, 'resolveReopenDuplicates']);
         Route::post('/{id}/students', [SchedulingController::class, 'uploadStudentList']);
         Route::post('/{id}/resolve-duplicates', [SchedulingController::class, 'resolveDuplicates']);
         Route::get('/{id}/students', [SchedulingController::class, 'students']);

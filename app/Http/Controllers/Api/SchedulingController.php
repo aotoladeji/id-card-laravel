@@ -174,6 +174,159 @@ class SchedulingController extends Controller
         return $fields;
     }
 
+    private function normalizeMatricKey(?string $matric): ?string
+    {
+        $trimmed = trim((string) $matric);
+
+        return $trimmed === '' ? null : mb_strtolower($trimmed);
+    }
+
+    /**
+     * Groups freshly parsed Excel rows by (normalized) matric number and flags any
+     * matric number that collides with EITHER an existing database record for this
+     * schedule OR another row in the same file, so staff can decide per matric
+     * number whether to overwrite the former data, allow the duplicate (keep
+     * both), or skip it. No duplicate is ever imported silently. Rows without a
+     * matric number can't be deduped and always pass straight through.
+     *
+     * @param  array<int, array<string, mixed>>  $students  Freshly parsed rows.
+     * @param  \Illuminate\Support\Collection  $existingByMatric  Existing DB rows for this config, keyed by normalized matric number.
+     * @return array{duplicates: array, nonDuplicates: array}
+     */
+    private function groupStudentsForDuplicateCheck(array $students, \Illuminate\Support\Collection $existingByMatric): array
+    {
+        $fileGroups = [];
+        $nonDuplicates = [];
+
+        foreach ($students as $student) {
+            $matricNo = $this->studentValue($student, 'matric_number');
+            $key = $this->normalizeMatricKey($matricNo);
+
+            if ($key === null) {
+                $nonDuplicates[] = $student;
+
+                continue;
+            }
+
+            $fileGroups[$key]['matricNumber'] = $matricNo;
+            $fileGroups[$key]['rows'][] = $student;
+        }
+
+        $duplicates = [];
+
+        foreach ($fileGroups as $key => $group) {
+            $existing = $existingByMatric->get($key);
+
+            if (! $existing && count($group['rows']) === 1) {
+                $nonDuplicates[] = $group['rows'][0];
+
+                continue;
+            }
+
+            $duplicates[] = [
+                'matricNumber' => $group['matricNumber'],
+                'existingStudentId' => $existing->id ?? null,
+                'existing' => $existing ? $this->formatExistingStudentForDuplicate($existing) : null,
+                'occurrences' => array_map(fn ($row) => $this->formatNewStudentForDuplicate($row), $group['rows']),
+            ];
+        }
+
+        return ['duplicates' => $duplicates, 'nonDuplicates' => $nonDuplicates];
+    }
+
+    private function formatExistingStudentForDuplicate(object $existing): array
+    {
+        return [
+            'id' => $existing->id,
+            'fullName' => $existing->full_name,
+            'surname' => $existing->surname,
+            'otherNames' => $existing->other_names,
+            'email' => $existing->email,
+            'phone' => $existing->phone,
+            'faculty' => $existing->faculty,
+            'department' => $existing->department,
+            'level' => $existing->level,
+            'hasScheduled' => (bool) $existing->has_scheduled,
+        ];
+    }
+
+    private function formatNewStudentForDuplicate(array $student): array
+    {
+        return [
+            'fullName' => $this->studentFullName($student),
+            'surname' => $this->studentValue($student, 'surname'),
+            'otherNames' => $this->studentValue($student, 'other_names'),
+            'email' => $this->studentValue($student, 'email'),
+            'phone' => $this->studentValue($student, 'phone'),
+            'faculty' => $this->studentValue($student, 'faculty'),
+            'department' => $this->studentValue($student, 'department'),
+            'level' => $this->studentValue($student, 'level'),
+            'jambNumber' => $this->studentValue($student, 'jamb_number'),
+            'pgRegNumber' => $this->studentValue($student, 'pg_reg_number'),
+            'extraFields' => $this->studentExtraFields($student),
+        ];
+    }
+
+    /**
+     * Shared by both duplicate-resolution endpoints (initial upload & reopen).
+     * Updates an existing scheduled_students row with freshly uploaded bio data.
+     * A student who already has a confirmed appointment keeps their booking and
+     * login/capture codes untouched - only their profile fields are refreshed.
+     */
+    private function applyOverwriteDecision(int $existingId, array $newData, $now): bool
+    {
+        $existing = DB::table('scheduled_students')->where('id', $existingId)->first();
+        if (! $existing) {
+            return false;
+        }
+
+        $updateData = [
+            'full_name' => $newData['fullName'] ?? $existing->full_name,
+            'surname' => $newData['surname'] ?? null,
+            'other_names' => $newData['otherNames'] ?? null,
+            'email' => $newData['email'] ?? null,
+            'phone' => $newData['phone'] ?? null,
+            'faculty' => $newData['faculty'] ?? null,
+            'department' => $newData['department'] ?? null,
+            'level' => $newData['level'] ?? null,
+            'jamb_number' => $newData['jambNumber'] ?? null,
+            'pg_reg_number' => $newData['pgRegNumber'] ?? null,
+            'extra_fields' => json_encode($newData['extraFields'] ?? []),
+            'updated_at' => $now,
+        ];
+
+        if (! $existing->has_scheduled) {
+            $updateData['login_code'] = $this->generateUniqueLoginCode();
+        }
+
+        DB::table('scheduled_students')->where('id', $existingId)->update($updateData);
+
+        return true;
+    }
+
+    /** Shared by both duplicate-resolution endpoints for "keep both" / "allow duplicate". */
+    private function insertDuplicateStudent(int $configId, string $matricNo, array $newData, string $loginCode, $now): void
+    {
+        DB::table('scheduled_students')->insert([
+            'config_id' => $configId,
+            'matric_number' => $matricNo,
+            'jamb_number' => $newData['jambNumber'] ?? null,
+            'pg_reg_number' => $newData['pgRegNumber'] ?? null,
+            'full_name' => $newData['fullName'] ?? 'Unknown Student',
+            'surname' => $newData['surname'] ?? null,
+            'other_names' => $newData['otherNames'] ?? null,
+            'email' => $newData['email'] ?? null,
+            'phone' => $newData['phone'] ?? null,
+            'faculty' => $newData['faculty'] ?? null,
+            'department' => $newData['department'] ?? null,
+            'level' => $newData['level'] ?? null,
+            'extra_fields' => json_encode($newData['extraFields'] ?? []),
+            'login_code' => $loginCode,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
     private function generateLoginCode(): string
     {
         return (string) random_int(100000, 999999);
@@ -465,21 +618,106 @@ class SchedulingController extends Controller
             return response()->json(['message' => 'Student list file is empty or invalid format'], 400);
         }
 
-        $imported = 0;
-        $errors = [];
-        $now = now();
-        $codes = $this->generateUniqueLoginCodes(count($students));
-
         // Deleting the previous batch is OPTIONAL. By default it is kept (moved into an archived copy).
         $deleteOldData = $request->boolean('deleteOldData', false);
 
-        DB::transaction(function () use ($id, $config, $startDate, $endDate, $students, $codes, $now, $deleteOldData, &$imported, &$errors) {
+        // Check the new file's matric numbers against the CURRENT roster of this
+        // schedule (about to be archived/deleted) as well as against each other,
+        // before anything is touched - so nothing is overwritten or duplicated
+        // without staff deciding what should happen.
+        $existingByMatric = DB::table('scheduled_students')
+            ->where('config_id', $id)
+            ->get()
+            ->filter(fn ($row) => $this->normalizeMatricKey($row->matric_number) !== null)
+            ->keyBy(fn ($row) => $this->normalizeMatricKey($row->matric_number));
+
+        $grouped = $this->groupStudentsForDuplicateCheck($students, $existingByMatric);
+
+        if (! empty($grouped['duplicates'])) {
+            return response()->json([
+                'success' => true,
+                'hasDuplicates' => true,
+                'duplicates' => $grouped['duplicates'],
+                'nonDuplicates' => $grouped['nonDuplicates'],
+                'meta' => ['startDate' => $startDate, 'endDate' => $endDate, 'deleteOldData' => $deleteOldData],
+                'message' => count($grouped['duplicates']).' duplicate matric number(s) found. Please review and decide how to handle them.',
+            ]);
+        }
+
+        return $this->finalizeReopenWithNewBatch($user, $id, $config, $startDate, $endDate, $deleteOldData, $grouped['nonDuplicates'], [], []);
+    }
+
+    // POST /api/scheduling/{id}/reopen/resolve-duplicates
+    public function resolveReopenDuplicates(Request $request, int $id)
+    {
+        $user = $request->attributes->get('authUser');
+        $decisions = $request->input('decisions', []);
+        $nonDuplicates = $request->input('nonDuplicates', []);
+        $startDate = $request->input('startDate');
+        $endDate = $request->input('endDate');
+        $deleteOldData = $request->boolean('deleteOldData', false);
+
+        if (! $startDate) {
+            return response()->json(['message' => 'Start date is required'], 400);
+        }
+
+        $config = DB::table('scheduling_config')->where('id', $id)->first();
+        if (! $config) {
+            return response()->json(['message' => 'Configuration not found'], 404);
+        }
+
+        $overwrites = [];
+        $keepBothStudents = [];
+
+        foreach ($decisions as $decision) {
+            $matricNo = $decision['matricNumber'] ?? null;
+            $action = $decision['action'] ?? null;
+            $existingId = $decision['existingStudentId'] ?? null;
+            $occurrences = $decision['occurrences'] ?? (isset($decision['new']) ? [$decision['new']] : []);
+
+            if (! $matricNo || empty($occurrences)) {
+                continue;
+            }
+
+            if ($action === 'overwrite' && $existingId) {
+                $selectedIndex = $decision['selectedOccurrenceIndex'] ?? 0;
+                $overwrites[] = [
+                    'existingStudentId' => (int) $existingId,
+                    'matricNumber' => $matricNo,
+                    'data' => $occurrences[$selectedIndex] ?? $occurrences[0],
+                ];
+            } elseif ($action === 'keep_both' || ($action === 'overwrite' && ! $existingId)) {
+                foreach ($occurrences as $occurrence) {
+                    $keepBothStudents[] = ['matricNumber' => $matricNo, 'data' => $occurrence];
+                }
+            }
+            // 'skip' (or anything unrecognized): no-op - discard every occurrence for this matric number.
+        }
+
+        return $this->finalizeReopenWithNewBatch($user, $id, $config, $startDate, $endDate, $deleteOldData, $nonDuplicates, $overwrites, $keepBothStudents);
+    }
+
+    /**
+     * Shared by the duplicate-free fast path and the post-resolution path: archives
+     * or deletes the previous batch (excluding any students being overwritten in
+     * place), updates the config's dates, regenerates time slots, applies
+     * "overwrite"/"keep both" decisions, and imports the remaining non-duplicates.
+     */
+    private function finalizeReopenWithNewBatch(array $user, int $id, object $config, string $startDate, ?string $endDate, bool $deleteOldData, array $nonDuplicateStudents, array $overwrites, array $keepBothStudents)
+    {
+        $imported = 0;
+        $errors = [];
+        $now = now();
+        $overwriteIds = array_column($overwrites, 'existingStudentId');
+
+        DB::transaction(function () use ($id, $config, $startDate, $endDate, $deleteOldData, $nonDuplicateStudents, $overwrites, $keepBothStudents, $overwriteIds, $now, &$imported, &$errors) {
             if ($deleteOldData) {
-                DB::table('appointments')->where('config_id', $id)->delete();
-                DB::table('scheduled_students')->where('config_id', $id)->delete();
+                $excludeIds = $overwriteIds ?: [0];
+                DB::table('appointments')->where('config_id', $id)->whereNotIn('student_id', $excludeIds)->delete();
+                DB::table('scheduled_students')->where('config_id', $id)->whereNotIn('id', $excludeIds)->delete();
                 DB::table('time_slots')->where('config_id', $id)->delete();
             } else {
-                $this->archivePreviousBatch($config, $now);
+                $this->archivePreviousBatch($config, $now, $overwriteIds);
             }
 
             DB::table('scheduling_config')->where('id', $id)->update([
@@ -494,7 +732,30 @@ class SchedulingController extends Controller
             $slotsPerDay = (int) ceil($config->slots_per_period / ($config->type === 'weekly' ? 5 : 20));
             $this->generateSlotsForRange($id, $start, $end, (bool) $config->exclude_weekends, $config->daily_end_time ?: '14:00:00', $slotsPerDay);
 
-            foreach ($students as $i => $student) {
+            // Apply "overwrite" decisions: update the retained student's bio data in place.
+            foreach ($overwrites as $overwrite) {
+                try {
+                    if (! $this->applyOverwriteDecision($overwrite['existingStudentId'], $overwrite['data'], $now)) {
+                        $errors[] = ['matricNumber' => $overwrite['matricNumber'], 'error' => 'Existing student not found'];
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = ['matricNumber' => $overwrite['matricNumber'], 'error' => $e->getMessage()];
+                }
+            }
+
+            // Insert "keep both" duplicates (camelCase decision payloads).
+            foreach ($keepBothStudents as $entry) {
+                try {
+                    $this->insertDuplicateStudent($id, $entry['matricNumber'], $entry['data'], $this->generateUniqueLoginCode(), $now);
+                    $imported++;
+                } catch (\Throwable $e) {
+                    $errors[] = ['matricNumber' => $entry['matricNumber'], 'error' => $e->getMessage()];
+                }
+            }
+
+            // Insert ordinary non-duplicates (raw parsed Excel rows).
+            $codes = $this->generateUniqueLoginCodes(count($nonDuplicateStudents));
+            foreach ($nonDuplicateStudents as $i => $student) {
                 try {
                     DB::table('scheduled_students')->insert([
                         'config_id' => $id,
@@ -521,12 +782,14 @@ class SchedulingController extends Controller
             }
         });
 
-        ActivityLogger::log($user['id'], 'SCHEDULING_REOPENED', "Reopened scheduling ID: {$id} with {$imported} new students ({$startDate} – ".($endDate ?: 'open-ended').')');
+        $overwriteCount = count($overwrites);
+        ActivityLogger::log($user['id'], 'SCHEDULING_REOPENED', "Reopened scheduling ID: {$id} with {$imported} new students ({$overwriteCount} updated in place) ({$startDate} – ".($endDate ?: 'open-ended').')');
 
         return response()->json([
             'success' => true,
-            'message' => "Schedule reopened with {$imported} students.",
+            'message' => "Schedule reopened with {$imported} student(s).".($overwriteCount ? " {$overwriteCount} existing record(s) updated in place." : ''),
             'imported' => $imported,
+            'overwritten' => $overwriteCount,
             'errors' => $errors ?: null,
         ]);
     }
@@ -545,72 +808,29 @@ class SchedulingController extends Controller
             return response()->json(['message' => 'Student list file is empty or invalid format'], 400);
         }
 
-        // Detect duplicates by matric_number for this config_id
-        $matricNumbers = array_filter(array_map(fn ($s) => $this->studentValue($s, 'matric_number'), $students));
-        
-        if (! empty($matricNumbers)) {
-            $existingStudents = DB::table('scheduled_students')
-                ->where('config_id', $id)
-                ->whereIn('matric_number', $matricNumbers)
-                ->get()
-                ->keyBy('matric_number');
+        // Detect duplicates by matric_number: both against existing records for this
+        // config AND between rows inside the uploaded file itself. Nothing with a
+        // colliding matric number is ever imported without staff deciding what to do.
+        $existingByMatric = DB::table('scheduled_students')
+            ->where('config_id', $id)
+            ->get()
+            ->filter(fn ($row) => $this->normalizeMatricKey($row->matric_number) !== null)
+            ->keyBy(fn ($row) => $this->normalizeMatricKey($row->matric_number));
 
-            if ($existingStudents->isNotEmpty()) {
-                // Build duplicate details and separate non-duplicates
-                $duplicates = [];
-                $nonDuplicates = [];
+        $grouped = $this->groupStudentsForDuplicateCheck($students, $existingByMatric);
 
-                foreach ($students as $student) {
-                    $matricNo = $this->studentValue($student, 'matric_number');
-                    
-                    if ($matricNo && isset($existingStudents[$matricNo])) {
-                        $existing = $existingStudents[$matricNo];
-                        $duplicates[] = [
-                            'matricNumber' => $matricNo,
-                            'existingStudentId' => $existing->id,
-                            'existing' => [
-                                'id' => $existing->id,
-                                'fullName' => $existing->full_name,
-                                'surname' => $existing->surname,
-                                'otherNames' => $existing->other_names,
-                                'email' => $existing->email,
-                                'phone' => $existing->phone,
-                                'faculty' => $existing->faculty,
-                                'department' => $existing->department,
-                                'level' => $existing->level,
-                                'hasScheduled' => (bool) $existing->has_scheduled,
-                            ],
-                            'new' => [
-                                'fullName' => $this->studentFullName($student),
-                                'surname' => $this->studentValue($student, 'surname'),
-                                'otherNames' => $this->studentValue($student, 'other_names'),
-                                'email' => $this->studentValue($student, 'email'),
-                                'phone' => $this->studentValue($student, 'phone'),
-                                'faculty' => $this->studentValue($student, 'faculty'),
-                                'department' => $this->studentValue($student, 'department'),
-                                'level' => $this->studentValue($student, 'level'),
-                                'jambNumber' => $this->studentValue($student, 'jamb_number'),
-                                'pgRegNumber' => $this->studentValue($student, 'pg_reg_number'),
-                                'extraFields' => $this->studentExtraFields($student),
-                            ],
-                        ];
-                    } else {
-                        $nonDuplicates[] = $student;
-                    }
-                }
-
-                // Return duplicates for user decision
-                return response()->json([
-                    'success' => true,
-                    'hasDuplicates' => true,
-                    'duplicates' => $duplicates,
-                    'nonDuplicates' => $nonDuplicates,
-                    'message' => count($duplicates).' duplicate matric number(s) found. Please review and decide how to handle them.',
-                ]);
-            }
+        if (! empty($grouped['duplicates'])) {
+            return response()->json([
+                'success' => true,
+                'hasDuplicates' => true,
+                'duplicates' => $grouped['duplicates'],
+                'nonDuplicates' => $grouped['nonDuplicates'],
+                'message' => count($grouped['duplicates']).' duplicate matric number(s) found. Please review and decide how to handle them.',
+            ]);
         }
 
         // No duplicates - proceed with normal import
+        $students = $grouped['nonDuplicates'];
         $imported = 0;
         $errors = [];
         $now = now();
@@ -869,12 +1089,16 @@ class SchedulingController extends Controller
     /**
      * Moves the current students, slots and appointments of $config into a NEW archived
      * copy of the schedule, so the live schedule can start fresh without losing any data.
+     * Students whose IDs are in $excludeStudentIds are "overwrite" duplicates being
+     * retained in the live schedule, so they (and their appointments) stay behind.
      */
-    private function archivePreviousBatch(object $config, $now): void
+    private function archivePreviousBatch(object $config, $now, array $excludeStudentIds = []): void
     {
-        $hasData = DB::table('scheduled_students')->where('config_id', $config->id)->exists()
+        $excludeIds = $excludeStudentIds ?: [0];
+
+        $hasData = DB::table('scheduled_students')->where('config_id', $config->id)->whereNotIn('id', $excludeIds)->exists()
             || DB::table('time_slots')->where('config_id', $config->id)->exists()
-            || DB::table('appointments')->where('config_id', $config->id)->exists();
+            || DB::table('appointments')->where('config_id', $config->id)->whereNotIn('student_id', $excludeIds)->exists();
 
         if (! $hasData) {
             return;
@@ -890,8 +1114,9 @@ class SchedulingController extends Controller
 
         $archiveId = DB::table('scheduling_config')->insertGetId($copy);
 
-        DB::table('appointments')->where('config_id', $config->id)->update(['config_id' => $archiveId]);
-        DB::table('scheduled_students')->where('config_id', $config->id)->update(['config_id' => $archiveId]);
+        DB::table('appointments')->where('config_id', $config->id)->whereNotIn('student_id', $excludeIds)->update(['config_id' => $archiveId]);
+        DB::table('scheduled_students')->where('config_id', $config->id)->whereNotIn('id', $excludeIds)->update(['config_id' => $archiveId]);
+        // Slots aren't student-specific and are always regenerated fresh for the live config.
         DB::table('time_slots')->where('config_id', $config->id)->update(['config_id' => $archiveId]);
     }
 
@@ -1021,6 +1246,7 @@ class SchedulingController extends Controller
         $overwriteCount = 0;
         $keepBothCount = 0;
         $nonDuplicateCount = 0;
+        $skippedCount = 0;
         $errors = [];
         $now = now();
 
@@ -1032,67 +1258,39 @@ class SchedulingController extends Controller
                 $matricNo = $decision['matricNumber'] ?? null;
                 $action = $decision['action'] ?? null;
                 $existingId = $decision['existingStudentId'] ?? null;
-                $newData = $decision['new'] ?? null;
+                // 'occurrences' is the new multi-row shape (supports intra-file duplicates);
+                // 'new' is kept as a fallback for older single-row payloads.
+                $occurrences = $decision['occurrences'] ?? (isset($decision['new']) ? [$decision['new']] : []);
 
-                if (! $matricNo || ! $action || ! $newData) {
+                if (! $matricNo || ! $action || empty($occurrences)) {
                     $errors[] = ['matricNumber' => $matricNo, 'error' => 'Missing required fields'];
 
                     continue;
                 }
 
                 try {
-                    if ($action === 'overwrite') {
-                        // Update existing record with new data
-                        $existing = DB::table('scheduled_students')->where('id', $existingId)->first();
-                        if (! $existing) {
+                    if ($action === 'overwrite' && $existingId) {
+                        $selectedIndex = $decision['selectedOccurrenceIndex'] ?? 0;
+                        $newData = $occurrences[$selectedIndex] ?? $occurrences[0];
+
+                        if (! $this->applyOverwriteDecision((int) $existingId, $newData, $now)) {
                             $errors[] = ['matricNumber' => $matricNo, 'error' => 'Existing student not found'];
 
                             continue;
                         }
-
-                        $updateData = [
-                            'full_name' => $newData['fullName'] ?? $existing->full_name,
-                            'surname' => $newData['surname'],
-                            'other_names' => $newData['otherNames'],
-                            'email' => $newData['email'],
-                            'phone' => $newData['phone'],
-                            'faculty' => $newData['faculty'],
-                            'department' => $newData['department'],
-                            'level' => $newData['level'],
-                            'jamb_number' => $newData['jambNumber'],
-                            'pg_reg_number' => $newData['pgRegNumber'],
-                            'extra_fields' => json_encode($newData['extraFields'] ?? []),
-                            'updated_at' => $now,
-                        ];
-
-                        // Regenerate login code only if student hasn't scheduled yet
-                        if (! $existing->has_scheduled) {
-                            $updateData['login_code'] = $this->generateUniqueLoginCode();
-                        }
-
-                        DB::table('scheduled_students')->where('id', $existingId)->update($updateData);
                         $overwriteCount++;
-                    } elseif ($action === 'keep_both') {
-                        // Insert new record as-is
-                        DB::table('scheduled_students')->insert([
-                            'config_id' => $id,
-                            'matric_number' => $matricNo,
-                            'jamb_number' => $newData['jambNumber'],
-                            'pg_reg_number' => $newData['pgRegNumber'],
-                            'full_name' => $newData['fullName'] ?? 'Unknown Student',
-                            'surname' => $newData['surname'],
-                            'other_names' => $newData['otherNames'],
-                            'email' => $newData['email'],
-                            'phone' => $newData['phone'],
-                            'faculty' => $newData['faculty'],
-                            'department' => $newData['department'],
-                            'level' => $newData['level'],
-                            'extra_fields' => json_encode($newData['extraFields'] ?? []),
-                            'login_code' => $this->generateUniqueLoginCode(),
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ]);
-                        $keepBothCount++;
+                    } elseif ($action === 'keep_both' || ($action === 'overwrite' && ! $existingId)) {
+                        // "Allow duplicate" / "keep both", or an "overwrite" chosen for a
+                        // matric number that only duplicates within the file itself (no
+                        // existing record to overwrite) - insert every occurrence as-is.
+                        foreach ($occurrences as $occurrence) {
+                            $this->insertDuplicateStudent($id, $matricNo, $occurrence, $this->generateUniqueLoginCode(), $now);
+                            $keepBothCount++;
+                        }
+                    } elseif ($action === 'skip') {
+                        // Explicit no-op: keep the existing record (if any) untouched and
+                        // discard every occurrence from the uploaded file for this matric number.
+                        $skippedCount++;
                     } else {
                         $errors[] = ['matricNumber' => $matricNo, 'error' => 'Invalid action: '.$action];
                     }
@@ -1133,13 +1331,14 @@ class SchedulingController extends Controller
 
             DB::commit();
 
-            ActivityLogger::log($user['id'], 'DUPLICATES_RESOLVED', "Resolved duplicates for scheduling ID {$id}: {$overwriteCount} overwritten, {$keepBothCount} kept both, {$nonDuplicateCount} new inserted");
+            ActivityLogger::log($user['id'], 'DUPLICATES_RESOLVED', "Resolved duplicates for scheduling ID {$id}: {$overwriteCount} overwritten, {$keepBothCount} kept both, {$skippedCount} skipped, {$nonDuplicateCount} new inserted");
 
             return response()->json([
                 'success' => true,
                 'message' => 'Duplicates resolved successfully',
                 'overwritten' => $overwriteCount,
                 'keptBoth' => $keepBothCount,
+                'skipped' => $skippedCount,
                 'imported' => $nonDuplicateCount,
                 'errors' => $errors ?: null,
             ]);

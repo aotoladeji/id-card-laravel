@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import DuplicateResolutionModal from '../../components/DuplicateResolutionModal';
 import { showNotification } from '../../utils/errorHandler';
 import { formatTime12Hour } from '../../utils/timeFormat';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,6 +19,9 @@ export default function SchedulingManagement() {
   const [reopenConfig, setReopenConfig] = useState(null); // config being reopened
   const [showArchived, setShowArchived] = useState(false);
   const [archivedCount, setArchivedCount] = useState(0);
+  // { configId, kind: 'upload' | 'reopen', duplicates, nonDuplicates, meta } while a duplicate decision is pending
+  const [pendingDuplicates, setPendingDuplicates] = useState(null);
+  const [resolvingDuplicates, setResolvingDuplicates] = useState(false);
   const { dialogState, showDialog, closeDialog } = useConfirmDialog();
 
   useEffect(() => {
@@ -243,6 +247,43 @@ export default function SchedulingManagement() {
       }
     } catch {
       showNotification('Error reopening the schedule', 'error');
+    }
+  };
+
+  const handleResolveDuplicates = async (decisions) => {
+    if (!pendingDuplicates) return;
+    setResolvingDuplicates(true);
+    try {
+      const { configId, kind, nonDuplicates, meta } = pendingDuplicates;
+      const endpoint = kind === 'reopen'
+        ? `/api/scheduling/${configId}/reopen/resolve-duplicates`
+        : `/api/scheduling/${configId}/resolve-duplicates`;
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          decisions,
+          nonDuplicates,
+          ...(kind === 'reopen' ? meta : {})
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        showNotification(data.message || 'Duplicates resolved', 'success');
+        setPendingDuplicates(null);
+        fetchConfigs();
+      } else {
+        showNotification(data.message || 'Could not resolve duplicates', 'error');
+      }
+    } catch {
+      showNotification('Error resolving duplicates', 'error');
+    } finally {
+      setResolvingDuplicates(false);
     }
   };
 
@@ -475,6 +516,10 @@ export default function SchedulingManagement() {
               // Offer to send emails right away
               sendEmails(reopenConfig.id);
             }}
+            onDuplicates={(duplicates, nonDuplicates, meta) => {
+              setPendingDuplicates({ configId: reopenConfig.id, kind: 'reopen', duplicates, nonDuplicates, meta });
+              setReopenConfig(null);
+            }}
             onCancel={() => setReopenConfig(null)}
           />
         )}
@@ -492,8 +537,22 @@ export default function SchedulingManagement() {
             setShowCreateModal(false);
             fetchConfigs();
           }}
+          onDuplicates={(configId, duplicates, nonDuplicates) => {
+            setShowCreateModal(false);
+            fetchConfigs();
+            setPendingDuplicates({ configId, kind: 'upload', duplicates, nonDuplicates, meta: {} });
+          }}
         />
       </Modal>
+
+      {/* Duplicate Matric Number Resolution Modal */}
+      <DuplicateResolutionModal
+        isOpen={!!pendingDuplicates}
+        duplicates={pendingDuplicates?.duplicates}
+        submitting={resolvingDuplicates}
+        onClose={() => setPendingDuplicates(null)}
+        onResolve={handleResolveDuplicates}
+      />
 
       {/* Details Modal */}
       <Modal
@@ -521,7 +580,7 @@ export default function SchedulingManagement() {
   );
 }
 
-function ReopenScheduleForm({ config, onSuccess, onCancel }) {
+function ReopenScheduleForm({ config, onSuccess, onDuplicates, onCancel }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [file, setFile] = useState(null);
@@ -553,7 +612,11 @@ function ReopenScheduleForm({ config, onSuccess, onCancel }) {
       });
       const data = await response.json();
       if (response.ok) {
-        onSuccess(data.imported);
+        if (data.hasDuplicates) {
+          onDuplicates(data.duplicates, data.nonDuplicates, data.meta);
+        } else {
+          onSuccess(data.imported);
+        }
       } else {
         showNotification(data.message || 'Error reopening schedule', 'error');
       }
@@ -651,7 +714,7 @@ function ReopenScheduleForm({ config, onSuccess, onCancel }) {
   );
 }
 
-function CreateSchedulingForm({ onSuccess }) {
+function CreateSchedulingForm({ onSuccess, onDuplicates }) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -703,7 +766,15 @@ Dress appropriately for your ID photo`
         });
 
         const uploadData = await uploadResponse.json();
-        
+
+        if (uploadResponse.ok && uploadData.hasDuplicates) {
+          // Config already exists; hand off to the duplicate-resolution flow
+          // instead of importing anything further without a staff decision.
+          onDuplicates(configId, uploadData.duplicates, uploadData.nonDuplicates);
+
+          return;
+        }
+
         if (uploadResponse.ok) {
           showNotification(
             `Scheduling created! ${uploadData.imported} student(s) imported successfully.`,
