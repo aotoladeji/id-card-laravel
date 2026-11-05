@@ -102,48 +102,65 @@ export default function DuplicateResolutionModal({ isOpen, onClose, duplicates, 
 
               <div style={{ display: 'grid', gridTemplateColumns: dup.existing ? '1fr 1fr' : '1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 {dup.existing && (
-                  <div style={{ padding: '0.75rem', background: 'var(--card-bg, #fff)', borderRadius: '6px', fontSize: '0.85rem' }}>
-                    <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                  <div style={{ padding: '0.75rem', background: '#ffffff', borderRadius: '6px', fontSize: '0.85rem', color: '#111827' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '0.35rem', color: '#111827' }}>
                       Already stored{' '}
                       {dup.existing.hasScheduled && <span className="badge badge-success">Scheduled</span>}
                     </div>
-                    <div>{dup.existing.fullName}</div>
-                    <div style={{ color: 'var(--text-dim)' }}>{dup.existing.email || '—'}</div>
-                    <div style={{ color: 'var(--text-dim)' }}>
+                    <div style={{ fontWeight: 600 }}>{dup.existing.fullName}</div>
+                    <div style={{ color: '#4b5563' }}>{dup.existing.email || '—'}</div>
+                    <div style={{ color: '#4b5563' }}>{dup.existing.phone || '—'}</div>
+                    <div style={{ color: '#4b5563' }}>
                       {[dup.existing.faculty, dup.existing.department, dup.existing.level].filter(Boolean).join(' / ') || '—'}
                     </div>
                   </div>
                 )}
 
-                <div style={{ padding: '0.75rem', background: 'var(--card-bg, #fff)', borderRadius: '6px', fontSize: '0.85rem' }}>
-                  <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                <div style={{ padding: '0.75rem', background: '#ffffff', borderRadius: '6px', fontSize: '0.85rem', color: '#111827' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '0.35rem', color: '#111827' }}>
                     {hasMultipleOccurrences ? 'New in uploaded file' : 'New data'}
                   </div>
-                  {dup.occurrences.map((occ, idx) => (
-                    <label
-                      key={idx}
-                      style={{
-                        display: hasMultipleOccurrences && choice.action !== 'keep_both' ? 'flex' : 'block',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        marginBottom: idx < dup.occurrences.length - 1 ? '0.5rem' : 0,
-                        cursor: hasMultipleOccurrences && choice.action !== 'keep_both' ? 'pointer' : 'default',
-                      }}
-                    >
-                      {hasMultipleOccurrences && choice.action !== 'keep_both' && (
-                        <input
-                          type="radio"
-                          name={`occurrence-${dup.matricNumber}`}
-                          checked={choice.selectedOccurrenceIndex === idx}
-                          onChange={() => setSelectedOccurrence(dup.matricNumber, idx)}
-                        />
-                      )}
-                      <span>
-                        {occ.fullName}
-                        <span style={{ color: 'var(--text-dim)' }}> — {occ.email || 'no email'}</span>
-                      </span>
-                    </label>
-                  ))}
+                  {dup.occurrences.map((occ, idx) => {
+                    const occDeptInfo = [occ.faculty, occ.department, occ.level].filter(Boolean).join(' / ') || '—';
+                    const existingDeptInfo = dup.existing
+                      ? [dup.existing.faculty, dup.existing.department, dup.existing.level].filter(Boolean).join(' / ')
+                      : null;
+                    const deptChanged = dup.existing && occDeptInfo !== (existingDeptInfo || '—');
+
+                    return (
+                      <label
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.4rem',
+                          marginBottom: idx < dup.occurrences.length - 1 ? '0.75rem' : 0,
+                          paddingBottom: idx < dup.occurrences.length - 1 ? '0.75rem' : 0,
+                          borderBottom: idx < dup.occurrences.length - 1 ? '1px solid #e5e7eb' : 'none',
+                          cursor: hasMultipleOccurrences && choice.action !== 'keep_both' ? 'pointer' : 'default',
+                        }}
+                      >
+                        {hasMultipleOccurrences && choice.action !== 'keep_both' && (
+                          <input
+                            type="radio"
+                            name={`occurrence-${dup.matricNumber}`}
+                            checked={choice.selectedOccurrenceIndex === idx}
+                            onChange={() => setSelectedOccurrence(dup.matricNumber, idx)}
+                            style={{ marginTop: '0.2rem' }}
+                          />
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{occ.fullName}</div>
+                          <div style={{ color: '#4b5563' }}>{occ.email || 'no email'}</div>
+                          <div style={{ color: '#4b5563' }}>{occ.phone || '—'}</div>
+                          <div style={{ color: deptChanged ? '#b45309' : '#4b5563', fontWeight: deptChanged ? 700 : 400 }}>
+                            {occDeptInfo}
+                            {deptChanged && <span style={{ marginLeft: '0.35rem' }}>⚠️ changed</span>}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
