@@ -8,11 +8,14 @@ export default function Collections() {
   const [filter, setFilter] = useState('awaiting_collection');
   const [search, setSearch] = useState('');
   const [fingerprintModal, setFingerprintModal] = useState(null); // { id, name }
-  const [scanState, setScanState] = useState('idle'); // idle | scanning | scanned | verifying
+  const [scanState, setScanState] = useState('idle'); // idle | scanning | scanned | verifying | override
   const [scannedImage, setScannedImage] = useState(null);
   const [scanPayload, setScanPayload] = useState(null);
   const [scannedTemplate, setScannedTemplate] = useState(null);
   const [lastScanSignature, setLastScanSignature] = useState(null);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overridePermitted, setOverridePermitted] = useState(false);
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false);
 
   const pickScannerTemplate = (payload) => {
     if (!payload || typeof payload !== 'object') return null;
@@ -119,6 +122,8 @@ export default function Collections() {
     setScannedImage(null);
     setScanPayload(null);
     setScannedTemplate(null);
+    setOverrideReason('');
+    setOverridePermitted(false);
   };
 
   // Step 1 — trigger the Windows fingerprint scanner service
@@ -197,6 +202,41 @@ export default function Collections() {
     } catch {
       showNotification('Error verifying fingerprint', 'error');
       setScanState('scanned');
+    }
+  };
+
+  // Fallback path — used when fingerprint verification fails or isn't
+  // possible (scanner unavailable, student has no usable fingerprint, etc).
+  // Requires an explicit "permitted" confirmation plus a reason, so every
+  // override is deliberate and recorded on the collection record.
+  const handleOverrideCollect = async () => {
+    if (!overridePermitted || !overrideReason.trim()) return;
+    const { id } = fingerprintModal;
+    setOverrideSubmitting(true);
+    try {
+      const response = await fetch(`/api/collections/${id}/collect`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          notes: `Collected without fingerprint verification — Reason: ${overrideReason.trim()}`
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        showNotification(data.message || 'Card marked as collected', 'success');
+        closeFingerprintModal();
+        fetchCollections();
+        fetchStats();
+      } else {
+        showNotification(data.message || 'Could not mark card as collected', 'error');
+      }
+    } catch {
+      showNotification('Error marking card as collected', 'error');
+    } finally {
+      setOverrideSubmitting(false);
     }
   };
 
@@ -389,10 +429,13 @@ export default function Collections() {
                 <p style={{ color: 'var(--text-dim)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                   Scanner starts automatically. Ask the card owner to place their finger on the scanner now.
                 </p>
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '1rem' }}>
                   <button className="btn btn-secondary" onClick={closeFingerprintModal}>Cancel</button>
                   <button className="btn btn-primary" onClick={handleScan}>👆 Scan Fingerprint</button>
                 </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => setScanState('override')}>
+                  ⚠️ Fingerprint not applicable / unavailable
+                </button>
               </>
             )}
 
@@ -403,7 +446,12 @@ export default function Collections() {
                 <p style={{ color: 'var(--text-dim)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                   Waiting for fingerprint... ask the card owner to place their finger on the scanner now.
                 </p>
-                <button className="btn btn-secondary" onClick={closeFingerprintModal}>Cancel</button>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <button className="btn btn-secondary" onClick={closeFingerprintModal}>Cancel</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setScanState('override')}>
+                    ⚠️ Can't scan
+                  </button>
+                </div>
               </>
             )}
 
@@ -421,11 +469,14 @@ export default function Collections() {
                 <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '1rem' }}>
                   Scanner response received. Proceed to verify.
                 </div>
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '1rem' }}>
                   <button className="btn btn-secondary" onClick={closeFingerprintModal}>Cancel</button>
                   <button className="btn btn-secondary" onClick={handleScan}>🔄 Rescan</button>
                   <button className="btn btn-primary" onClick={handleFingerprintVerify}>✅ Verify</button>
                 </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => setScanState('override')}>
+                  ⚠️ Fingerprint fails to match / not applicable
+                </button>
               </>
             )}
 
@@ -434,6 +485,49 @@ export default function Collections() {
               <>
                 <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🔍</div>
                 <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Comparing fingerprint...</p>
+              </>
+            )}
+
+            {/* Step 5 — override: manual collection when fingerprint fails / isn't applicable */}
+            {scanState === 'override' && (
+              <>
+                <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>⚠️</div>
+                <p style={{ color: 'var(--text-dim)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                  Only use this if fingerprint verification failed or isn't possible for this collection
+                  (e.g. scanner unavailable, card owner has no usable fingerprint). Confirm identity by
+                  other means (valid ID, etc.) before proceeding.
+                </p>
+                <div className="form-group" style={{ textAlign: 'left', marginBottom: '1rem' }}>
+                  <label>Reason *</label>
+                  <textarea
+                    className="form-control"
+                    rows="2"
+                    placeholder="e.g. Fingerprint scanner unavailable, student's print not recognized..."
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', textAlign: 'left', marginBottom: '1.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={overridePermitted}
+                    onChange={(e) => setOverridePermitted(e.target.checked)}
+                    style={{ marginTop: '0.2rem' }}
+                  />
+                  I confirm this collection is permitted without fingerprint verification.
+                </label>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <button className="btn btn-secondary" onClick={() => setScanState('idle')} disabled={overrideSubmitting}>
+                    Back
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleOverrideCollect}
+                    disabled={!overridePermitted || !overrideReason.trim() || overrideSubmitting}
+                  >
+                    {overrideSubmitting ? 'Collecting...' : '✅ Confirm & Collect'}
+                  </button>
+                </div>
               </>
             )}
           </div>
