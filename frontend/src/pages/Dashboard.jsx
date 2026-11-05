@@ -87,7 +87,7 @@ export default function Dashboard() {
         { id: 'material-requests', label: '📦 Material Requests' },
         { id: 'print-history', label: '📋 Print History' },
         { id: 'collections', label: '🎴 Collections' },
-        { id: 'logs', label: '📋 System Logs' },
+        // { id: 'logs', label: '📋 System Logs' },
         { id: 'analytics', label: '📊 Analytics' },
         { id: 'reports', label: '📄 Reports' },
         { id: 'profile', label: '👤 Profile' }
