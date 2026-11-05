@@ -51,8 +51,10 @@ export default function Dashboard() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showChangePassword, setShowChangePassword] = useState(false);
+  // Sidebar is the default layout; only an explicit, previously-saved choice
+  // of the top navbar should opt a user out of it.
   const [sidebarMode, setSidebarMode] = useState(
-    () => localStorage.getItem('navMode') === 'sidebar'
+    () => localStorage.getItem('navMode') !== 'navbar'
   );
 
   const toggleNavMode = () => {
@@ -97,14 +99,14 @@ export default function Dashboard() {
         { id: 'overview', label: '🏠 Overview' },
         { id: 'inventory-overview', label: '📦 Inventory' },
         { id: 'faulty-deliveries', label: '⚠️ Faulty Deliveries' },
-        { id: 'reprint', label: '🔄 Reprint Approvals' },
         { id: 'material', label: '📦 Material Requests' },
-        { id: 'daily-reports', label: '📊 Daily Reports' },
-        { id: 'staff', label: '👥 Staff Management' },
+        { id: 'scheduling', label: '📅 Scheduling' },
+        { id: 'reprint', label: '🔄 Reprint Approvals' },
         { id: 'collections', label: '📈 Collections' },
         { id: 'print-history', label: '📋 Print History' },
-        { id: 'scheduling', label: '📅 Scheduling' },
         { id: 'card-archive', label: '🗄️ Printed Cards Archive' },
+        { id: 'staff', label: '👥 Staff Management' },
+        { id: 'daily-reports', label: '📊 Daily Reports' },
         { id: 'profile', label: '👤 Profile' }
       ];
     }
