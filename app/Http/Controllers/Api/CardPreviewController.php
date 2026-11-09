@@ -95,6 +95,7 @@ class CardPreviewController extends Controller
                         ?? null
                 ),
                 'status' => 'queued',
+                'manually_edited_at' => now(),
                 'added_to_queue_at' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),

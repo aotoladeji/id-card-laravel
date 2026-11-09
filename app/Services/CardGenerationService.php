@@ -260,6 +260,7 @@ class CardGenerationService
         $data['signature'] = md5((string) ($card->signature ?? ''));
         $hash = md5(json_encode($data));
 
-        return "card-images/{$cardId}-v4-{$hash}.png";
+        // v5: larger uniform bold type + enlarged passport face.
+        return "card-images/{$cardId}-v5-{$hash}.png";
     }
 }

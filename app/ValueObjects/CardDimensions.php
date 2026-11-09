@@ -28,15 +28,15 @@ class CardDimensions
 
     // Text field positions (x from left edge, baseline y from top)
     public const TEXT_FIELDS = [
-        'matric' => ['x' => 70, 'y' => 72, 'size' => 16.6, 'bold' => true],
-        'surname' => ['x' => 70, 'y' => 90.5, 'size' => 15.2, 'bold' => true],
-        'other_names' => ['x' => 70, 'y' => 109.5, 'size' => 15.2, 'bold' => true],
-        'faculty' => ['x' => 70, 'y' => 127.5, 'size' => 15.2, 'bold' => true],
-        'department' => ['x' => 70, 'y' => 144.5, 'size' => 15.2, 'bold' => true],
-        'level' => ['x' => 70, 'y' => 164.5, 'size' => 16.6, 'bold' => true],
-        'hall' => ['x' => 70, 'y' => 181, 'size' => 16.6, 'bold' => true],
-        'card_number' => ['x' => 7.2, 'y' => 204.5, 'size' => 11.1, 'bold' => false],
-        'session' => ['x' => 329.5, 'y' => 173, 'size' => 12.45, 'bold' => true, 'rotation' => -90],
+        'matric' => ['x' => 70, 'y' => 72, 'size' => 30.0, 'bold' => true],
+        'surname' => ['x' => 70, 'y' => 90.5, 'size' => 30.0, 'bold' => true],
+        'other_names' => ['x' => 70, 'y' => 109.5, 'size' => 30.0, 'bold' => true],
+        'faculty' => ['x' => 70, 'y' => 127.5, 'size' => 30.0, 'bold' => true],
+        'department' => ['x' => 70, 'y' => 144.5, 'size' => 30.0, 'bold' => true],
+        'level' => ['x' => 70, 'y' => 164.5, 'size' => 30.0, 'bold' => true],
+        'hall' => ['x' => 70, 'y' => 181, 'size' => 30.0, 'bold' => true],
+        'card_number' => ['x' => 7.2, 'y' => 204.5, 'size' => 30.0, 'bold' => true],
+        'session' => ['x' => 329.5, 'y' => 173, 'size' => 30.0, 'bold' => true, 'rotation' => -90],
     ];
 
     // Text overflow handling
@@ -60,7 +60,7 @@ class CardDimensions
     public const BARCODE_Y = 192;
 
     // Face detection and reframing parameters
-    public const FACE_HEIGHT_PERCENT = 0.50;  // Face height = 50% of frame
+    public const FACE_HEIGHT_PERCENT = 0.65;  // Face height = 65% of frame (enlarged vs. official card)
     public const FACE_CHIN_PERCENT = 0.71;    // Chin at 71% down frame
     public const FACE_CENTER_X = 273;         // Face horizontally centered
 

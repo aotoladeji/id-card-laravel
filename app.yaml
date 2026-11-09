@@ -1,3 +1,18 @@
 kind: wasmer.io/App.v0
 name: id-card-unit
 package: .
+
+# Wasmer Edge's local filesystem is ephemeral. Attach the managed database so
+# writes (card corrections, scheduling data, reprint requests) persist across
+# refreshes and redeploys. Wasmer injects DB_HOST/DB_PORT/DB_NAME/DB_USERNAME/
+# DB_PASSWORD at runtime.
+capabilities:
+  database:
+    engine: mysql
+
+env:
+  DB_CONNECTION: mysql
+
+# The PHP built-in server is single-threaded.
+scaling:
+  mode: single_concurrency

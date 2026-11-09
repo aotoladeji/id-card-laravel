@@ -112,6 +112,7 @@ class PrintQueueController extends Controller
                 'session' => $approvedCard->session,
                 'hall' => $approvedCard->hall,
                 'signature' => $approvedCard->signature,
+                'manually_edited_at' => now(),
                 'updated_at' => now(),
             ]);
 
@@ -140,6 +141,7 @@ class PrintQueueController extends Controller
             'passport_photo' => $approvedCard->passport_photo,
             'signature' => $approvedCard->signature,
             'status' => 'queued',
+            'manually_edited_at' => now(),
             'added_to_queue_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),

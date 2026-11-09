@@ -111,12 +111,17 @@ class ApprovedCardController extends Controller
         }
 
         $update['updated_at'] = now();
+        $update['manually_edited_at'] = now();
 
         $affected = DB::table('approved_cards')->where('card_id', $id)->update($update);
 
         if (! $affected) {
             return response()->json(['success' => false, 'message' => 'Card not found'], 404);
         }
+
+        // Keep the queued copy (used to render/print the card) in step with the
+        // edit, and protect it from being reverted by the capture-app sync.
+        DB::table('print_queue')->where('card_id', $id)->update($update);
 
         $card = DB::table('approved_cards')->where('card_id', $id)->first();
         $card->passport_photo = $card->passport_photo ? base64_encode($card->passport_photo) : null;

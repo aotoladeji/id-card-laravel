@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\ActivityLogger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -135,6 +136,24 @@ class SchedulingController extends Controller
         }
 
         return $students;
+    }
+
+    /**
+     * Parse an uploaded roster and delete its temporary file immediately.
+     * The students are stored in the database, so the spreadsheet itself is
+     * never needed again (and must not linger on the deployment filesystem).
+     */
+    private function parseAndDiscardUploadedFile(UploadedFile $file): array
+    {
+        $path = $file->getRealPath();
+
+        try {
+            return $path ? $this->parseStudentsFromFile($path) : [];
+        } finally {
+            if ($path && is_file($path)) {
+                @unlink($path);
+            }
+        }
     }
 
     private function studentValue(array $student, string $canonical): ?string
@@ -613,7 +632,8 @@ class SchedulingController extends Controller
             return response()->json(['message' => 'Configuration not found'], 404);
         }
 
-        $students = $this->parseStudentsFromFile($request->file('file')->getRealPath());
+        $uploadedFile = $request->file('file');
+        $students = $this->parseAndDiscardUploadedFile($uploadedFile);
         if (empty($students)) {
             return response()->json(['message' => 'Student list file is empty or invalid format'], 400);
         }
@@ -803,7 +823,8 @@ class SchedulingController extends Controller
             return response()->json(['message' => 'No file uploaded'], 400);
         }
 
-        $students = $this->parseStudentsFromFile($request->file('file')->getRealPath());
+        $uploadedFile = $request->file('file');
+        $students = $this->parseAndDiscardUploadedFile($uploadedFile);
         if (empty($students)) {
             return response()->json(['message' => 'Student list file is empty or invalid format'], 400);
         }

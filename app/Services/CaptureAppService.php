@@ -454,7 +454,8 @@ class CaptureAppService
                     $passportBinary = $this->decodeImageData($card['passport_photo']);
                     $signatureBinary = $this->decodeImageData($card['signature']);
 
-                    $historyExists = DB::table('approved_cards')->where('card_id', $card['id'])->exists();
+                    $historyExists = DB::table('approved_cards')->where('card_id', $card['id'])->first();
+                    $historyEditedLocally = $historyExists && ($historyExists->manually_edited_at ?? null) !== null;
 
                     if (! $historyExists) {
                         DB::table('approved_cards')->insert([
@@ -476,7 +477,7 @@ class CaptureAppService
                             'updated_at' => now(),
                         ]);
                         $addedToHistory++;
-                    } else {
+                    } elseif (! $historyEditedLocally) {
                         DB::table('approved_cards')->where('card_id', $card['id'])->update(array_filter([
                             'surname' => $card['surname'],
                             'other_names' => $card['other_names'],
@@ -514,42 +515,52 @@ class CaptureAppService
                         continue;
                     }
 
-                    if (DB::table('print_queue')->where('card_id', $card['id'])->exists()) {
-                        DB::table('print_queue')->where('card_id', $card['id'])->update(array_filter([
-                            'surname' => $card['surname'],
-                            'other_names' => $card['other_names'],
-                            'matric_no' => $card['matric_no'],
-                            'staff_id' => $card['staff_id'],
-                            'faculty' => $card['faculty'],
-                            'department' => $card['department'],
-                            'level' => $card['level'],
-                            'card_number' => $card['card_number'],
-                            'session' => $card['session'],
-                            'hall' => $card['hall'],
-                        ], fn ($v) => $v !== null && $v !== '') + [
-                            'signature' => $signatureBinary ?: DB::raw('signature'),
-                            'updated_at' => now(),
-                        ]);
+                    $queuedCard = DB::table('print_queue')->where('card_id', $card['id'])->first();
+                    if ($queuedCard) {
+                        // Never overwrite a card that a supervisor corrected in
+                        // this app (reprint edits, department changes, etc.).
+                        if (($queuedCard->manually_edited_at ?? null) === null) {
+                            DB::table('print_queue')->where('card_id', $card['id'])->update(array_filter([
+                                'surname' => $card['surname'],
+                                'other_names' => $card['other_names'],
+                                'matric_no' => $card['matric_no'],
+                                'staff_id' => $card['staff_id'],
+                                'faculty' => $card['faculty'],
+                                'department' => $card['department'],
+                                'level' => $card['level'],
+                                'card_number' => $card['card_number'],
+                                'session' => $card['session'],
+                                'hall' => $card['hall'],
+                            ], fn ($v) => $v !== null && $v !== '') + [
+                                'signature' => $signatureBinary ?: DB::raw('signature'),
+                                'updated_at' => now(),
+                            ]);
+                        }
                         $skipped++;
 
                         continue;
                     }
 
+                    // If a supervisor corrected this card, queue their corrected
+                    // values rather than the stale capture-app copy.
+                    $localCard = $historyEditedLocally ? $historyExists : null;
+
                     DB::table('print_queue')->insert([
                         'card_id' => $card['id'],
-                        'surname' => $card['surname'],
-                        'other_names' => $card['other_names'],
-                        'matric_no' => $card['matric_no'],
-                        'staff_id' => $card['staff_id'],
-                        'faculty' => $card['faculty'],
-                        'department' => $card['department'],
-                        'level' => $card['level'],
-                        'card_number' => $card['card_number'],
-                        'session' => $card['session'],
-                        'hall' => $card['hall'],
-                        'passport_photo' => $passportBinary,
-                        'signature' => $signatureBinary,
+                        'surname' => $localCard->surname ?? $card['surname'],
+                        'other_names' => $localCard->other_names ?? $card['other_names'],
+                        'matric_no' => $localCard->matric_no ?? $card['matric_no'],
+                        'staff_id' => $localCard->staff_id ?? $card['staff_id'],
+                        'faculty' => $localCard->faculty ?? $card['faculty'],
+                        'department' => $localCard->department ?? $card['department'],
+                        'level' => $localCard->level ?? $card['level'],
+                        'card_number' => $localCard->card_number ?? $card['card_number'],
+                        'session' => $localCard->session ?? $card['session'],
+                        'hall' => $localCard->hall ?? $card['hall'],
+                        'passport_photo' => $localCard->passport_photo ?? $passportBinary,
+                        'signature' => $localCard->signature ?? $signatureBinary,
                         'status' => 'queued',
+                        'manually_edited_at' => $historyEditedLocally ? now() : null,
                         'added_to_queue_at' => now(),
                         'created_at' => now(),
                         'updated_at' => now(),
