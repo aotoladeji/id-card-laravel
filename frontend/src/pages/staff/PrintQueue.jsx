@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { showNotification } from '../../utils/errorHandler';
 import PrintCardModal from '../../components/staff/PrintCardModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -14,17 +14,21 @@ export default function PrintQueue() {
   const [bulkPrinting, setBulkPrinting] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const { dialogState, showDialog, closeDialog } = useConfirmDialog();
+  const syncingRef = useRef(false);
 
   useEffect(() => {
     fetchQueue();
-    
-    // Auto-sync every few seconds to keep queue aligned with capture app source of truth.
+
+    // Auto-sync every 30 seconds to keep queue aligned with capture app source of truth.
+    // (Was 5s: the full capture-app sync blocked the single server instance and
+    // starved every other request on Wasmer. 30s is plenty fresh.)
     const interval = setInterval(() => {
+      if (syncingRef.current) return;
       console.log('[Print Queue Auto-sync] Syncing from capture app...');
       syncCards(true); // silent sync
-    }, 5000);
-    
-    console.log('[Print Queue] Auto-sync enabled (every 5 seconds)');
+    }, 30000);
+
+    console.log('[Print Queue] Auto-sync enabled (every 30 seconds)');
     return () => {
       clearInterval(interval);
       console.log('[Print Queue] Auto-sync disabled');
@@ -48,8 +52,10 @@ export default function PrintQueue() {
   };
 
   const syncCards = async (silent = false) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     if (!silent) setSyncing(true);
-    
+
     try {
       const response = await fetch('/api/print-queue/sync', {
         method: 'POST',
@@ -78,6 +84,7 @@ export default function PrintQueue() {
       }
     } finally {
       if (!silent) setSyncing(false);
+      syncingRef.current = false;
     }
   };
 

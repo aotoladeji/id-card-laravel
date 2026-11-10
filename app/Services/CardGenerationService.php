@@ -48,9 +48,10 @@ class CardGenerationService
             $this->barcode->renderBarcode($canvas, $card->card_number);
         }
 
-        // Convert to PNG
+        // Convert to PNG (compression 6: much faster than 9, similar size
+        // for card images — matters on the CPU-throttled Wasmer host)
         ob_start();
-        imagepng($canvas, null, 9); // Max compression
+        imagepng($canvas, null, 6);
         $png = ob_get_clean();
         imagedestroy($canvas);
 

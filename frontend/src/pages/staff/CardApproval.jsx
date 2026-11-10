@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import CardReviewForm from '../../components/staff/CardReviewForm';
@@ -22,12 +22,15 @@ export default function CardApproval() {
   const [editForm, setEditForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const syncingRef = useRef(false);
 
   useEffect(() => {
     syncFromCaptureApp(true);
     fetchPendingReprints();
-    // Auto-sync every 30 seconds
+    // Auto-sync every 30 seconds (never two syncs at once — a slow sync must
+    // not pile up behind the single server instance on Wasmer)
     const interval = setInterval(() => {
+      if (syncingRef.current) return;
       console.log('[Auto-sync] Syncing approved cards from capture app...');
       syncFromCaptureApp(true); // silent sync
       fetchPendingReprints(); // Also refresh pending reprints
@@ -86,6 +89,8 @@ export default function CardApproval() {
   };
 
   const syncFromCaptureApp = async (silent = false) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     if (!silent) setSyncing(true);
 
     try {
@@ -113,6 +118,7 @@ export default function CardApproval() {
       }
     } finally {
       if (!silent) setSyncing(false);
+      syncingRef.current = false;
     }
   };
 

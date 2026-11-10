@@ -12,7 +12,12 @@ class ApprovedCardController extends Controller
     // GET /api/approved-cards?search=
     public function index(Request $request)
     {
-        $query = DB::table('approved_cards');
+        $query = DB::table('approved_cards')->select([
+            'id', 'card_id', 'surname', 'other_names', 'matric_no', 'staff_id', 'faculty',
+            'department', 'level', 'card_number', 'session', 'hall', 'approved_at',
+            'synced_from_capture_app_at', 'archive_downloaded_at', 'manually_edited_at',
+            'created_at', 'updated_at',
+        ]);
 
         if ($search = $request->query('search')) {
             $like = "%{$search}%";
@@ -27,12 +32,11 @@ class ApprovedCardController extends Controller
             });
         }
 
-        $cards = $query->orderByDesc('approved_at')->get()->map(function ($card) {
-            $card->passport_photo = $card->passport_photo ? base64_encode($card->passport_photo) : null;
-            $card->signature = $card->signature ? base64_encode($card->signature) : null;
-
-            return $card;
-        });
+        // List payloads must not carry the LONGBLOB columns: no UI reads
+        // passport_photo/signature from this endpoint, and every row used to be
+        // base64-encoded and shipped (megabytes per request on Wasmer).
+        // Detail views use show(), which still returns the images.
+        $cards = $query->orderByDesc('approved_at')->get();
 
         return response()->json(['success' => true, 'cards' => $cards, 'total' => $cards->count()]);
     }

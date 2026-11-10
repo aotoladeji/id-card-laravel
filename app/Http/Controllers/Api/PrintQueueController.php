@@ -40,11 +40,25 @@ class PrintQueueController extends Controller
     // GET /api/print-queue?status=
     public function index(Request $request)
     {
+        // Only scalar columns: the LONGBLOB passport_photo/signature were
+        // base64-encoded and shipped for every queued card on every poll.
+        // Nothing reads them from this list (printing fetches the rendered
+        // card via /api/card-images/{id}/image), so they stay server-side.
         $query = DB::table('print_queue as pq')
             ->leftJoin('approved_cards as ac', 'ac.card_id', '=', 'pq.card_id')
             ->leftJoin('users as u', 'pq.printed_by', '=', 'u.id')
             ->selectRaw("
-                pq.*,
+                pq.id,
+                pq.card_id,
+                pq.status,
+                pq.added_to_queue_at,
+                pq.printed_at,
+                pq.printed_by,
+                pq.print_attempts,
+                pq.last_error,
+                pq.manually_edited_at,
+                pq.created_at,
+                pq.updated_at,
                 COALESCE(NULLIF(pq.surname, ''), ac.surname) AS surname,
                 COALESCE(NULLIF(pq.other_names, ''), ac.other_names) AS other_names,
                 COALESCE(NULLIF(pq.matric_no, ''), ac.matric_no) AS matric_no,
@@ -55,7 +69,6 @@ class PrintQueueController extends Controller
                 COALESCE(NULLIF(pq.card_number, ''), ac.card_number) AS card_number,
                 COALESCE(NULLIF(pq.session, ''), ac.session) AS session,
                 COALESCE(NULLIF(pq.hall, ''), ac.hall) AS hall,
-                ac.signature as approved_signature,
                 u.name as printed_by_name
             ");
 
@@ -65,15 +78,7 @@ class PrintQueueController extends Controller
             $query->whereIn('pq.status', ['queued', 'printing']);
         }
 
-        $queue = $query->orderBy('pq.added_to_queue_at')->get()->map(function ($card) {
-            // Raw image BLOBs must be base64-encoded before JSON serialization.
-            $card->passport_photo = $card->passport_photo ? base64_encode($card->passport_photo) : null;
-            $card->signature = $card->signature ?: $card->approved_signature;
-            unset($card->approved_signature);
-            $card->signature = $card->signature ? base64_encode($card->signature) : null;
-
-            return $card;
-        });
+        $queue = $query->orderBy('pq.added_to_queue_at')->get();
 
         return response()->json(['success' => true, 'queue' => $queue]);
     }

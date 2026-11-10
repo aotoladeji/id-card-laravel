@@ -359,6 +359,16 @@ class CaptureAppService
 
     private function backfillExistingSignatures(array $cards): int
     {
+        // Only rows that still lack a signature can be backfilled. Load those
+        // card IDs once, so after the first pass this issues zero queries
+        // instead of two per capture-app card on every sync.
+        $missingApproved = DB::table('approved_cards')->whereNull('signature')->pluck('card_id')->flip();
+        $missingQueue = DB::table('print_queue')->whereNull('signature')->pluck('card_id')->flip();
+
+        if ($missingApproved->isEmpty() && $missingQueue->isEmpty()) {
+            return 0;
+        }
+
         $updated = 0;
 
         foreach ($cards as $rawCard) {
@@ -367,7 +377,14 @@ class CaptureAppService
             }
 
             $identity = $this->extractCardIdentity($rawCard);
-            if (empty($identity['id']) || empty($identity['signature'])) {
+            $id = $identity['id'] ?? null;
+            if (empty($id) || empty($identity['signature'])) {
+                continue;
+            }
+
+            $needsApproved = isset($missingApproved[$id]);
+            $needsQueue = isset($missingQueue[$id]);
+            if (! $needsApproved && ! $needsQueue) {
                 continue;
             }
 
@@ -376,11 +393,20 @@ class CaptureAppService
                 continue;
             }
 
-            foreach (['approved_cards', 'print_queue'] as $table) {
-                $updated += DB::table($table)
-                    ->where('card_id', $identity['id'])
+            if ($needsApproved) {
+                $updated += DB::table('approved_cards')
+                    ->where('card_id', $id)
                     ->whereNull('signature')
                     ->update(['signature' => $signature, 'updated_at' => now()]);
+                $missingApproved->forget($id);
+            }
+
+            if ($needsQueue) {
+                $updated += DB::table('print_queue')
+                    ->where('card_id', $id)
+                    ->whereNull('signature')
+                    ->update(['signature' => $signature, 'updated_at' => now()]);
+                $missingQueue->forget($id);
             }
         }
 
@@ -449,12 +475,29 @@ class CaptureAppService
             $skipped = 0;
             $errors = 0;
 
+            // Batch lookups: the loop used to issue ~5 queries per card, which
+            // is painfully slow over a Wasmer region link (each query pays the
+            // network round-trip). These five queries replace all of them.
+            // Scalar columns only — no LONGBLOBs — except the on-demand fetch
+            // below for locally corrected cards that need queueing.
+            $historyMap = DB::table('approved_cards')
+                ->select('card_id', 'manually_edited_at', 'surname', 'other_names', 'matric_no', 'staff_id', 'faculty', 'department', 'level', 'card_number', 'session', 'hall')
+                ->get()
+                ->keyBy('card_id');
+            $queueMap = DB::table('print_queue')
+                ->select('id', 'card_id', 'manually_edited_at')
+                ->get()
+                ->keyBy('card_id');
+            $excludedIds = DB::table('print_queue_exclusions')->pluck('card_id')->flip();
+            $collectedIds = DB::table('card_collections')->pluck('card_id')->flip();
+            $historyIds = DB::table('print_history')->pluck('card_id')->flip();
+
             foreach ($approvedCards as $card) {
                 try {
                     $passportBinary = $this->decodeImageData($card['passport_photo']);
                     $signatureBinary = $this->decodeImageData($card['signature']);
 
-                    $historyExists = DB::table('approved_cards')->where('card_id', $card['id'])->first();
+                    $historyExists = $historyMap->get($card['id']);
                     $historyEditedLocally = $historyExists && ($historyExists->manually_edited_at ?? null) !== null;
 
                     if (! $historyExists) {
@@ -477,6 +520,7 @@ class CaptureAppService
                             'updated_at' => now(),
                         ]);
                         $addedToHistory++;
+                        $historyMap[$card['id']] = (object) ['card_id' => $card['id'], 'manually_edited_at' => null];
                     } elseif (! $historyEditedLocally) {
                         DB::table('approved_cards')->where('card_id', $card['id'])->update(array_filter([
                             'surname' => $card['surname'],
@@ -497,25 +541,25 @@ class CaptureAppService
                         ]);
                     }
 
-                    if (DB::table('print_queue_exclusions')->where('card_id', $card['id'])->exists()) {
+                    if (isset($excludedIds[$card['id']])) {
                         $skipped++;
 
                         continue;
                     }
 
-                    if (DB::table('card_collections')->where('card_id', $card['id'])->exists()) {
+                    if (isset($collectedIds[$card['id']])) {
                         $skipped++;
 
                         continue;
                     }
 
-                    if (DB::table('print_history')->where('card_id', $card['id'])->exists()) {
+                    if (isset($historyIds[$card['id']])) {
                         $skipped++;
 
                         continue;
                     }
 
-                    $queuedCard = DB::table('print_queue')->where('card_id', $card['id'])->first();
+                    $queuedCard = $queueMap->get($card['id']);
                     if ($queuedCard) {
                         // Never overwrite a card that a supervisor corrected in
                         // this app (reprint edits, department changes, etc.).
@@ -542,8 +586,12 @@ class CaptureAppService
                     }
 
                     // If a supervisor corrected this card, queue their corrected
-                    // values rather than the stale capture-app copy.
-                    $localCard = $historyEditedLocally ? $historyExists : null;
+                    // values rather than the stale capture-app copy. The batch
+                    // map holds scalars only, so fetch the full row (with
+                    // images) just for this rare case.
+                    $localCard = $historyEditedLocally
+                        ? DB::table('approved_cards')->where('card_id', $card['id'])->first()
+                        : null;
 
                     DB::table('print_queue')->insert([
                         'card_id' => $card['id'],
@@ -566,6 +614,7 @@ class CaptureAppService
                         'updated_at' => now(),
                     ]);
                     $addedToQueue++;
+                    $queueMap[$card['id']] = (object) ['id' => null, 'card_id' => $card['id'], 'manually_edited_at' => $historyEditedLocally ? now() : null];
                 } catch (\Throwable $e) {
                     Log::error("Error processing card {$card['id']}: ".$e->getMessage());
                     $errors++;
