@@ -88,7 +88,8 @@ class TextRenderingService
 
     /**
      * Render rotated text for the session field (bottom-to-top).
-     * Session text starts at bottom (y=173) and goes upward.
+     * GD angles are counter-clockwise: +90 runs the text upward from the
+     * baseline anchor, so (x, y) is the bottom of the text (y=173).
      */
     public function renderSessionText(GdImage $image, string $text): void
     {
@@ -101,13 +102,13 @@ class TextRenderingService
         $baselineX = $config['x'];
         $startY = $config['y']; // Bottom of text (y=173)
         $sizePt = $config['size_pt'];
-        $rotation = $config['rotation']; // -90 degrees
+        $rotation = $config['rotation']; // 90 degrees — reads bottom-to-top
 
         $black = imagecolorallocate($image, 0, 0, 0);
 
-        // For -90° rotation, text is rendered bottom-to-top
-        // The x,y in imagettftext is the baseline start point
-        // With -90° rotation, we need to position it correctly
+        // For +90° rotation, text runs upward from the anchor: the anchor
+        // is the baseline of the first (bottom) glyph, ink extends up from
+        // it and to the left of the baseline x.
         imagettftext($image, $sizePt, $rotation, $baselineX, $startY, $black, $fontPath, $text);
     }
 

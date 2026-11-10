@@ -36,7 +36,7 @@ class CardDimensions
         'level' => ['x' => 70, 'y' => 164.5, 'size' => 30.0, 'bold' => true],
         'hall' => ['x' => 70, 'y' => 181, 'size' => 30.0, 'bold' => true],
         'card_number' => ['x' => 7.2, 'y' => 204.5, 'size' => 30.0, 'bold' => true],
-        'session' => ['x' => 329.5, 'y' => 173, 'size' => 30.0, 'bold' => true, 'rotation' => -90],
+        'session' => ['x' => 329.5, 'y' => 173, 'size' => 30.0, 'bold' => true, 'rotation' => 90],
     ];
 
     // Text overflow handling
