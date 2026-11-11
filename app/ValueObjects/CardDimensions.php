@@ -47,9 +47,9 @@ class CardDimensions
 
     // Passport photo frame (in card units)
     public const PHOTO_X = 220;      // Moved left for bigger frame
-    public const PHOTO_Y = 80;       // Moved up for bigger frame
+    public const PHOTO_Y = 95;       // Top below surname (surname baseline at y=90.5)
     public const PHOTO_WIDTH = 95;   // Increased from 78 (larger width)
-    public const PHOTO_HEIGHT = 115; // Increased from 96 (larger height)
+    public const PHOTO_HEIGHT = 86;  // Height adjusted so bottom aligns with Hall baseline (y=181)
 
     // Signature box (in card units)
     public const SIGNATURE_X = 234;
