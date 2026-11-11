@@ -79,9 +79,28 @@ class TextRenderingService
             }
         }
 
-        // Render the text
+        // Render the text with multiple overlays for bolder appearance
         $black = imagecolorallocate($image, 0, 0, 0);
-        imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
+        
+        // Determine number of overlays based on field type
+        // Fields with 16.6 units (matric, level, hall) need extra boldness
+        $needsExtraBold = in_array($field, ['matric', 'level', 'hall']);
+        
+        if ($needsExtraBold) {
+            // 5-6 passes for extra bold fields
+            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY + 1, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY + 1, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX + 2, $baseY, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY + 2, $black, $fontPath, $text);
+        } else {
+            // 4 passes for standard fields
+            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY + 1, $black, $fontPath, $text);
+            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY + 1, $black, $fontPath, $text);
+        }
 
         return $currentSizeUnits;
     }
@@ -109,7 +128,11 @@ class TextRenderingService
         // For +90° rotation, text runs upward from the anchor: the anchor
         // is the baseline of the first (bottom) glyph, ink extends up from
         // it and to the left of the baseline x.
+        // Apply multiple overlays for bolder appearance
         imagettftext($image, $sizePt, $rotation, $baselineX, $startY, $black, $fontPath, $text);
+        imagettftext($image, $sizePt, $rotation, $baselineX + 1, $startY, $black, $fontPath, $text);
+        imagettftext($image, $sizePt, $rotation, $baselineX, $startY + 1, $black, $fontPath, $text);
+        imagettftext($image, $sizePt, $rotation, $baselineX + 1, $startY + 1, $black, $fontPath, $text);
     }
 
     /**
