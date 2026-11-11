@@ -79,11 +79,15 @@ class CardDimensions
     }
 
     /**
-     * Convert card units to points.
+     * Convert card units to points for font rendering at 300 DPI.
+     * Font sizes need to scale with the canvas size.
      */
     public static function unitsToPoints(float $units): float
     {
-        return $units * self::UNIT_TO_PT;
+        // At 300 DPI, convert units to pixels first, then to points
+        // 1 point = 1/72 inch = 300/72 pixels at 300 DPI
+        $pixels = $units * self::UNIT_TO_MM * self::PIXELS_PER_MM;
+        return $pixels * 72 / 300;  // Convert pixels to points at 300 DPI
     }
 
     /**
