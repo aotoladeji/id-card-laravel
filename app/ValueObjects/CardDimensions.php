@@ -46,10 +46,10 @@ class CardDimensions
     public const TEXT_MIN_FONT_SIZE_UNITS = 6;
 
     // Passport photo frame (in card units)
-    public const PHOTO_X = 234;
-    public const PHOTO_Y = 88;
-    public const PHOTO_WIDTH = 78;
-    public const PHOTO_HEIGHT = 96;
+    public const PHOTO_X = 220;      // Moved left for bigger frame
+    public const PHOTO_Y = 80;       // Moved up for bigger frame
+    public const PHOTO_WIDTH = 95;   // Increased from 78 (larger width)
+    public const PHOTO_HEIGHT = 115; // Increased from 96 (larger height)
 
     // Signature box (in card units)
     public const SIGNATURE_X = 234;
@@ -64,7 +64,7 @@ class CardDimensions
     // Face detection and reframing parameters
     public const FACE_HEIGHT_PERCENT = 0.46;  // Face height = 46% of frame
     public const FACE_CHIN_PERCENT = 0.69;    // Chin at 69% down frame
-    public const FACE_CENTER_X = 273;         // Face horizontally centered
+    public const FACE_CENTER_X = 267.5;       // Face horizontally centered (220 + 95/2)
 
     // Dark photo enhancement
     public const DARK_THRESHOLD = 75;         // Brightness < 75/255 is dark
