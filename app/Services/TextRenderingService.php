@@ -13,6 +13,10 @@ class TextRenderingService
     private string $boldFontPath;
     private string $regularFontPath;
 
+    // Reference code constants
+    private const CARD_MAX_TEXT_WIDTH = 155;  // SVG units available before the photo
+    private const CARD_MIN_FONT_SIZE = 6;
+
     public function __construct()
     {
         $this->boldFontPath = storage_path('app/fonts/timesbd.ttf');
@@ -27,7 +31,51 @@ class TextRenderingService
     }
 
     /**
+     * Calculate Times New Roman Bold character width in em units.
+     * Uses advance widths per 1000 em from the font metrics.
+     *
+     * @param string $text Text to measure
+     * @return float Width in em units
+     */
+    private function timesBoldWidthEm(string $text): float
+    {
+        static $w = [
+            ' ' => 250, '&' => 833, '-' => 333, '/' => 278, '.' => 250, ',' => 250,
+            '(' => 333, ')' => 333, "'" => 278,
+            'A' => 722, 'B' => 667, 'C' => 722, 'D' => 722, 'E' => 667, 'F' => 611, 'G' => 778,
+            'H' => 778, 'I' => 389, 'J' => 500, 'K' => 778, 'L' => 667, 'M' => 944, 'N' => 722,
+            'O' => 778, 'P' => 611, 'Q' => 778, 'R' => 722, 'S' => 556, 'T' => 667, 'U' => 722,
+            'V' => 722, 'W' => 1000, 'X' => 722, 'Y' => 722, 'Z' => 667,
+            'a' => 500, 'b' => 556, 'c' => 444, 'd' => 556, 'e' => 444, 'f' => 333, 'g' => 500,
+            'h' => 556, 'i' => 278, 'j' => 333, 'k' => 556, 'l' => 278, 'm' => 833, 'n' => 556,
+            'o' => 500, 'p' => 556, 'q' => 556, 'r' => 444, 's' => 389, 't' => 333, 'u' => 556,
+            'v' => 500, 'w' => 722, 'x' => 500, 'y' => 500, 'z' => 444,
+        ];
+        $total = 0;
+        $chars = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        foreach ($chars as $ch) {
+            $total += ctype_digit($ch) ? 500 : ($w[$ch] ?? 550);
+        }
+        return $total / 1000;
+    }
+
+    /**
+     * Calculate the optimal font size using Times New Roman Bold em-width metrics.
+     * Implements shrink-to-fit logic from reference code.
+     *
+     * @param string $text Text to fit
+     * @param float $size Initial font size in units
+     * @return float Final font size in units
+     */
+    private function fitCardFontSize(string $text, float $size): float
+    {
+        $em = $this->timesBoldWidthEm($text);
+        return $em > 0 ? max(self::CARD_MIN_FONT_SIZE, min($size, self::CARD_MAX_TEXT_WIDTH / $em)) : $size;
+    }
+
+    /**
      * Render text on the card image at the specified field position.
+     * Uses single imagettftext() call with Times New Roman Bold font.
      *
      * @param GdImage $image Card canvas
      * @param string $field Field name (e.g., 'matric', 'surname')
@@ -45,78 +93,24 @@ class TextRenderingService
         $baseX = $config['x'];
         $baseY = $config['y'];
         $baseSizeUnits = $config['size_units'];
-        $baseSizePt = $config['size_pt'];
         $rotation = $config['rotation'];
 
-        // Calculate maximum width in pixels
-        $maxWidthPixels = CardDimensions::unitsToPixels(CardDimensions::TEXT_MAX_WIDTH_UNITS);
-        $minSizeUnits = CardDimensions::TEXT_MIN_FONT_SIZE_UNITS;
+        // Calculate optimal font size using em-width metrics
+        $finalSizeUnits = $this->fitCardFontSize($text, $baseSizeUnits);
+        $finalSizePt = CardDimensions::unitsToPoints($finalSizeUnits);
 
-        // Find the right font size with shrink-to-fit
-        $currentSizeUnits = $baseSizeUnits;
-        $currentSizePt = $baseSizePt;
-
-        while ($currentSizeUnits >= $minSizeUnits) {
-            $bbox = imagettfbbox($currentSizePt, $rotation, $fontPath, $text);
-            if ($bbox === false) {
-                throw new \RuntimeException("Failed to calculate text bounding box for: {$text}");
-            }
-
-            $textWidth = abs($bbox[2] - $bbox[0]);
-
-            if ($textWidth <= $maxWidthPixels) {
-                break; // Text fits
-            }
-
-            // Shrink by 5%
-            $currentSizeUnits *= 0.95;
-            $currentSizePt = CardDimensions::unitsToPoints($currentSizeUnits);
-
-            if ($currentSizeUnits < $minSizeUnits) {
-                $currentSizeUnits = $minSizeUnits;
-                $currentSizePt = CardDimensions::unitsToPoints($minSizeUnits);
-                break;
-            }
-        }
-
-        // Render the text with multiple overlays for bolder appearance
+        // Render text with single imagettftext() call
         $black = imagecolorallocate($image, 0, 0, 0);
-        
-        // Determine number of overlays based on field type
-        // Only surname needs extra boldness
-        $needsExtraBold = ($field === 'surname');
-        
-        if ($needsExtraBold) {
-            // 15 passes for extra bold (surname)
-            for ($i = 0; $i <= 2; $i++) {
-                for ($j = 0; $j <= 2; $j++) {
-                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i, $baseY + $j, $black, $fontPath, $text);
-                }
-            }
-            // Additional passes with 2px offsets
-            for ($i = 0; $i <= 1; $i++) {
-                for ($j = 0; $j <= 1; $j++) {
-                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i*2, $baseY + $j*2, $black, $fontPath, $text);
-                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i*2 + 1, $baseY + $j*2 + 1, $black, $fontPath, $text);
-                }
-            }
-        } else {
-            // 10 passes for regular fields
-            for ($i = 0; $i <= 2; $i++) {
-                for ($j = 0; $j <= 2; $j++) {
-                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i, $baseY + $j, $black, $fontPath, $text);
-                }
-            }
-            imagettftext($image, $currentSizePt, $rotation, $baseX + 2, $baseY + 1, $black, $fontPath, $text);
-        }
+        imagettftext($image, $finalSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
 
-        return $currentSizeUnits;
+        return $finalSizeUnits;
     }
 
     /**
      * Render rotated text for the session field (bottom-to-top).
      * GD angles are counter-clockwise: +90 runs the text upward from the
      * baseline anchor, so (x, y) is the bottom of the text (y=173).
+     * Uses single imagettftext() call consistent with other fields.
      */
     public function renderSessionText(GdImage $image, string $text): void
     {
@@ -133,16 +127,8 @@ class TextRenderingService
 
         $black = imagecolorallocate($image, 0, 0, 0);
 
-        // For +90° rotation, text runs upward from the anchor: the anchor
-        // is the baseline of the first (bottom) glyph, ink extends up from
-        // it and to the left of the baseline x.
-        // Apply 10 passes for bolder appearance (consistent with regular fields)
-        for ($i = 0; $i <= 2; $i++) {
-            for ($j = 0; $j <= 2; $j++) {
-                imagettftext($image, $sizePt, $rotation, $baselineX + $i, $startY + $j, $black, $fontPath, $text);
-            }
-        }
-        imagettftext($image, $sizePt, $rotation, $baselineX + 2, $startY + 1, $black, $fontPath, $text);
+        // Single imagettftext() call for clean, crisp rendering
+        imagettftext($image, $sizePt, $rotation, $baselineX, $startY, $black, $fontPath, $text);
     }
 
     /**
