@@ -60,8 +60,8 @@ class CardDimensions
     public const BARCODE_Y = 192;
 
     // Face detection and reframing parameters
-    public const FACE_HEIGHT_PERCENT = 0.58;  // Face height = 58% of frame (prominent but not too zoomed)
-    public const FACE_CHIN_PERCENT = 0.77;    // Chin at 77% down frame (more room at top for full head)
+    public const FACE_HEIGHT_PERCENT = 0.38;  // Face height = 38% of frame (passport-style framing)
+    public const FACE_CHIN_PERCENT = 0.68;    // Chin at 68% down frame (shows head to upper chest/shoulders)
     public const FACE_CENTER_X = 273;         // Face horizontally centered
 
     // Dark photo enhancement

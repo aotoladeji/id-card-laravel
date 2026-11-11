@@ -87,19 +87,27 @@ class TextRenderingService
         $needsExtraBold = ($field === 'surname');
         
         if ($needsExtraBold) {
-            // 5-6 passes for extra bold fields
-            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY + 1, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY + 1, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX + 2, $baseY, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY + 2, $black, $fontPath, $text);
+            // 15 passes for extra bold (surname)
+            for ($i = 0; $i <= 2; $i++) {
+                for ($j = 0; $j <= 2; $j++) {
+                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i, $baseY + $j, $black, $fontPath, $text);
+                }
+            }
+            // Additional passes with 2px offsets
+            for ($i = 0; $i <= 1; $i++) {
+                for ($j = 0; $j <= 1; $j++) {
+                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i*2, $baseY + $j*2, $black, $fontPath, $text);
+                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i*2 + 1, $baseY + $j*2 + 1, $black, $fontPath, $text);
+                }
+            }
         } else {
-            // 4 passes for standard fields
-            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX, $baseY + 1, $black, $fontPath, $text);
-            imagettftext($image, $currentSizePt, $rotation, $baseX + 1, $baseY + 1, $black, $fontPath, $text);
+            // 10 passes for regular fields
+            for ($i = 0; $i <= 2; $i++) {
+                for ($j = 0; $j <= 2; $j++) {
+                    imagettftext($image, $currentSizePt, $rotation, $baseX + $i, $baseY + $j, $black, $fontPath, $text);
+                }
+            }
+            imagettftext($image, $currentSizePt, $rotation, $baseX + 2, $baseY + 1, $black, $fontPath, $text);
         }
 
         return $currentSizeUnits;
@@ -128,11 +136,13 @@ class TextRenderingService
         // For +90° rotation, text runs upward from the anchor: the anchor
         // is the baseline of the first (bottom) glyph, ink extends up from
         // it and to the left of the baseline x.
-        // Apply multiple overlays for bolder appearance
-        imagettftext($image, $sizePt, $rotation, $baselineX, $startY, $black, $fontPath, $text);
-        imagettftext($image, $sizePt, $rotation, $baselineX + 1, $startY, $black, $fontPath, $text);
-        imagettftext($image, $sizePt, $rotation, $baselineX, $startY + 1, $black, $fontPath, $text);
-        imagettftext($image, $sizePt, $rotation, $baselineX + 1, $startY + 1, $black, $fontPath, $text);
+        // Apply 10 passes for bolder appearance (consistent with regular fields)
+        for ($i = 0; $i <= 2; $i++) {
+            for ($j = 0; $j <= 2; $j++) {
+                imagettftext($image, $sizePt, $rotation, $baselineX + $i, $startY + $j, $black, $fontPath, $text);
+            }
+        }
+        imagettftext($image, $sizePt, $rotation, $baselineX + 2, $startY + 1, $black, $fontPath, $text);
     }
 
     /**
