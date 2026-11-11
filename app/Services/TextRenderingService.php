@@ -64,13 +64,32 @@ class TextRenderingService
      * Implements shrink-to-fit logic from reference code.
      *
      * @param string $text Text to fit
-     * @param float $size Initial font size in units
-     * @return float Final font size in units
+     * @param float $sizePt Initial font size in points
+     * @param int $maxWidthPixels Maximum width in pixels
+     * @return float Final font size in points
      */
-    private function fitCardFontSize(string $text, float $size): float
+    private function fitCardFontSize(string $text, float $sizePt, int $maxWidthPixels): float
     {
-        $em = $this->timesBoldWidthEm($text);
-        return $em > 0 ? max(self::CARD_MIN_FONT_SIZE, min($size, self::CARD_MAX_TEXT_WIDTH / $em)) : $size;
+        $fontPath = $this->boldFontPath;
+        $bbox = imagettfbbox($sizePt, 0, $fontPath, $text);
+        
+        if ($bbox === false) {
+            return $sizePt;
+        }
+        
+        $textWidth = abs($bbox[2] - $bbox[0]);
+        
+        // If text fits, return original size
+        if ($textWidth <= $maxWidthPixels) {
+            return $sizePt;
+        }
+        
+        // Calculate scale factor to fit
+        $scale = $maxWidthPixels / $textWidth;
+        $newSize = $sizePt * $scale;
+        
+        // Don't go below minimum readable size
+        return max(14, $newSize);  // Minimum 14pt
     }
 
     /**
@@ -80,7 +99,7 @@ class TextRenderingService
      * @param GdImage $image Card canvas
      * @param string $field Field name (e.g., 'matric', 'surname')
      * @param string $text Text to render
-     * @return float Actual font size used (in units)
+     * @return float Actual font size used (in points)
      */
     public function renderTextField(GdImage $image, string $field, string $text): float
     {
@@ -92,18 +111,20 @@ class TextRenderingService
         $fontPath = $config['bold'] ? $this->boldFontPath : $this->regularFontPath;
         $baseX = $config['x'];
         $baseY = $config['y'];
-        $baseSizeUnits = $config['size_units'];
+        $baseSizePt = $config['size_pt'];  // Already in points
         $rotation = $config['rotation'];
 
-        // Calculate optimal font size using em-width metrics
-        $finalSizeUnits = $this->fitCardFontSize($text, $baseSizeUnits);
-        $finalSizePt = CardDimensions::unitsToPoints($finalSizeUnits);
+        // Calculate max width in pixels (155 units = available space before photo)
+        $maxWidthPixels = CardDimensions::unitsToPixels(self::CARD_MAX_TEXT_WIDTH);
+
+        // Calculate optimal font size with shrink-to-fit
+        $finalSizePt = $this->fitCardFontSize($text, $baseSizePt, $maxWidthPixels);
 
         // Render text with single imagettftext() call
         $black = imagecolorallocate($image, 0, 0, 0);
         imagettftext($image, $finalSizePt, $rotation, $baseX, $baseY, $black, $fontPath, $text);
 
-        return $finalSizeUnits;
+        return $finalSizePt;
     }
 
     /**
