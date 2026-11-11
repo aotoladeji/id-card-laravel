@@ -83,8 +83,8 @@ class TextRenderingService
         $black = imagecolorallocate($image, 0, 0, 0);
         
         // Determine number of overlays based on field type
-        // Fields with 16.6 units (matric, level, hall) need extra boldness
-        $needsExtraBold = in_array($field, ['matric', 'level', 'hall']);
+        // Only surname needs extra boldness
+        $needsExtraBold = ($field === 'surname');
         
         if ($needsExtraBold) {
             // 5-6 passes for extra bold fields
