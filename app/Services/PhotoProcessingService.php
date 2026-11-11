@@ -153,7 +153,7 @@ class PhotoProcessingService
 
     /**
      * Reframe photo to match card specifications.
-     * Face height should be 50% of frame height, chin at 71% down.
+     * Face height = FACE_HEIGHT_PERCENT of frame height (currently 75%), chin at 71% down.
      */
     private function reframePhoto(GdImage $sourceImage, ?array $faceBox): GdImage
     {
